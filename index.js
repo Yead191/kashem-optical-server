@@ -1,5 +1,5 @@
 require('dotenv').config()
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const express = require('express');
 const cors = require('cors');
@@ -28,6 +28,8 @@ async function run() {
 
         // DB Collection
         const userCollection = client.db('KashemDB').collection('users')
+        const categoryCollection = client.db('KashemDB').collection('categories')
+        const productCollection = client.db('KashemDB').collection('products')
 
         // jwt related api
         app.post('/jwt', async (req, res) => {
@@ -71,6 +73,115 @@ async function run() {
             const result = await userCollection.insertOne(user)
             res.send(result)
         })
+        app.get('/users', async (req, res) => {
+            const result = await userCollection.find().toArray()
+            res.send(result)
+        })
+        app.patch('/users/:id/:role', async (req, res) => {
+            const id = req.params.id
+            const role = req.params.role
+            // console.log(role, id);
+            const query = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    role: role
+                }
+            }
+            const result = await userCollection.updateOne(query, updatedDoc)
+            res.send(result)
+        })
+        app.put('/users/profile/:id', async (req, res) => {
+            const id = req.params.id
+            const userInfo = req.body
+            if (!id || !ObjectId.isValid(id)) {
+
+                const result = await userCollection.insertOne(userInfo);
+                return res.send(result);
+            }
+            // console.log(id, userInfo);
+            const query = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    name: userInfo.name,
+                    mobile: userInfo.mobile,
+                    image: userInfo.image
+                }
+            }
+            const options = { upsert: true };
+            const result = await userCollection.updateOne(query, updatedDoc, options)
+            res.send(result)
+        })
+        app.get('/user', async (req, res) => {
+            const email = req.query.email
+            const query = { email: email }
+            const result = await userCollection.findOne(query)
+            // console.log(result);
+            res.send(result)
+        })
+
+
+
+
+
+
+
+        // category 
+
+        app.post('/categories', async(req,res)=>{
+            const category = req.body
+            const result = await categoryCollection.insertOne(category)
+            res.send(result)
+
+        })
+        app.get('/categories', async(req, res)=>{
+            const result = await categoryCollection.find().toArray()
+            res.send(result)
+        })
+        app.get('/category/:id', async(req, res)=>{
+            const id = req.params.id 
+            const filter = {_id: new ObjectId(id)}
+            const result = await categoryCollection.findOne(filter)
+            res.send(result)
+        })
+
+        app.patch('/category/update/:id', async(req,res)=>{
+            const id = req.params.id 
+            const data = req.body 
+            const filter = {_id: new ObjectId(id)}
+            const updatedDoc = {
+                $set: {
+                    name: data.name,
+                    image: data.image,
+                    description: data.description
+                }
+            }
+            const result = await categoryCollection.updateOne(filter, updatedDoc)
+            res.send(result)
+        })
+
+
+
+
+
+        // product
+        app.post('/products', async(req, res)=>{
+            const product = req.body 
+            const result = await productCollection.insertOne(product)
+            res.send(result)
+        })
+        app.get('/products', async(req, res)=>{
+            const result = await productCollection.find().toArray()
+            res.send(result);
+        })
+
+        app.delete('/product/delete/:id', async(req,res)=>{
+            const id  = req.params.id 
+            const filter = {_id: new ObjectId(id)}
+            const result = await productCollection.deleteOne(filter)
+            res.send(result)
+        })
+
+
 
 
 
