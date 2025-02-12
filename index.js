@@ -127,27 +127,27 @@ async function run() {
 
         // category 
 
-        app.post('/categories', async(req,res)=>{
+        app.post('/categories', async (req, res) => {
             const category = req.body
             const result = await categoryCollection.insertOne(category)
             res.send(result)
 
         })
-        app.get('/categories', async(req, res)=>{
+        app.get('/categories', async (req, res) => {
             const result = await categoryCollection.find().toArray()
             res.send(result)
         })
-        app.get('/category/:id', async(req, res)=>{
-            const id = req.params.id 
-            const filter = {_id: new ObjectId(id)}
+        app.get('/category/:id', async (req, res) => {
+            const id = req.params.id
+            const filter = { _id: new ObjectId(id) }
             const result = await categoryCollection.findOne(filter)
             res.send(result)
         })
 
-        app.patch('/category/update/:id', async(req,res)=>{
-            const id = req.params.id 
-            const data = req.body 
-            const filter = {_id: new ObjectId(id)}
+        app.patch('/category/update/:id', async (req, res) => {
+            const id = req.params.id
+            const data = req.body
+            const filter = { _id: new ObjectId(id) }
             const updatedDoc = {
                 $set: {
                     name: data.name,
@@ -161,23 +161,49 @@ async function run() {
 
 
 
-
+        //  'name', 'category', 'gender', 'origin', 'caseMetal', 'caseSize', 'braceletMaterial', 'glassType', 'color', 'wr', 'price', 'status', 'description', 'image'
 
         // product
-        app.post('/products', async(req, res)=>{
-            const product = req.body 
+        app.post('/products', async (req, res) => {
+            const product = req.body
             const result = await productCollection.insertOne(product)
             res.send(result)
         })
-        app.get('/products', async(req, res)=>{
-            const result = await productCollection.find().toArray()
+        app.get('/products', async (req, res) => {
+            const result = await productCollection.find().sort({ _id: -1 }).toArray()
             res.send(result);
         })
 
-        app.delete('/product/delete/:id', async(req,res)=>{
-            const id  = req.params.id 
-            const filter = {_id: new ObjectId(id)}
+        app.delete('/product/delete/:id', async (req, res) => {
+            const id = req.params.id
+            const filter = { _id: new ObjectId(id) }
             const result = await productCollection.deleteOne(filter)
+            res.send(result)
+        })
+        app.patch('/product/update/:id', async (req, res) => {
+            const id = req.params.id
+            const product = req.body
+            const filter = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+
+                    name: product.name,
+                    category: product.category,
+                    gender: product.gender,
+                    origin: product.origin,
+                    caseMetal: product.caseMetal,
+                    caseSize: product.caseSize,
+                    braceletMaterial: product.braceletMaterial,
+                    glassType: product.glassType,
+                    color: product.color,
+                    wr: product.wr,
+                    price: product.price,
+                    status: product.status,
+                    description: product.description,
+                    image: product.image,
+                }
+            }
+            const result = await productCollection.updateOne(filter, updatedDoc)
             res.send(result)
         })
 
