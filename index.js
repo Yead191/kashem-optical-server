@@ -170,7 +170,18 @@ async function run() {
             res.send(result)
         })
         app.get('/products', async (req, res) => {
-            const result = await productCollection.find().sort({ _id: -1 }).toArray()
+            const search = req.query.search
+            const category = req.query.category
+            const query = {}
+            if (search) {
+                query.name = { $regex: search, $options: "i" };
+            }
+            if (category) {
+                query.category = category
+
+            }
+            // console.log(query);
+            const result = await productCollection.find(query).sort({ _id: -1 }).toArray()
             res.send(result);
         })
 
