@@ -201,6 +201,13 @@ async function run() {
                     status: product.status,
                     description: product.description,
                     image: product.image,
+                    warranty: product.warranty,
+                    frameType: product.frameType,
+                    frameMaterial: product.frameMaterial,
+                    frameSize: product.frameSize,
+                    prescription: product.prescription,
+                    lensMaterial: product.lensMaterial,
+                    dimensions: product.dimensions,
                 }
             }
             const result = await productCollection.updateOne(filter, updatedDoc)
