@@ -9,6 +9,10 @@ const port = process.env.PORT || 5000
 
 
 
+//middleware
+app.use(express.json())
+app.use(cors())
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.pjwkg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -74,7 +78,12 @@ async function run() {
             res.send(result)
         })
         app.get('/users', async (req, res) => {
-            const result = await userCollection.find().toArray()
+            const search = req.query.search
+            const query = {}
+            if (search) {
+                query.name = {$regex: search, $options: "i"}
+            }
+            const result = await userCollection.find(query).toArray()
             res.send(result)
         })
         app.patch('/users/:id/:role', async (req, res) => {
@@ -246,7 +255,3 @@ app.get('/', async (req, res) => {
 app.listen(port, () => {
     console.log('server running on: ', port);
 })
-
-//middleware
-app.use(express.json())
-app.use(cors())
