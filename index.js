@@ -34,6 +34,7 @@ async function run() {
         const userCollection = client.db('KashemDB').collection('users')
         const categoryCollection = client.db('KashemDB').collection('categories')
         const productCollection = client.db('KashemDB').collection('products')
+        const bannerCollection = client.db('KashemDB').collection('banners')
 
         // jwt related api
         app.post('/jwt', async (req, res) => {
@@ -81,7 +82,7 @@ async function run() {
             const search = req.query.search
             const query = {}
             if (search) {
-                query.name = {$regex: search, $options: "i"}
+                query.name = { $regex: search, $options: "i" }
             }
             const result = await userCollection.find(query).toArray()
             res.send(result)
@@ -231,6 +232,39 @@ async function run() {
                 }
             }
             const result = await productCollection.updateOne(filter, updatedDoc)
+            res.send(result)
+        })
+
+
+
+
+        // Banner Management
+        app.post('/banners', async (req, res) => {
+            const banner = req.body
+            const result = await bannerCollection.insertOne(banner)
+            res.send(result)
+        })
+        app.get('/banners', async (req, res) => {
+            const result = await bannerCollection.aggregate([{ $sample: { size: await bannerCollection.countDocuments() } }]).toArray();
+            res.send(result);
+        });
+        app.patch('/banner/status/:id', async (req, res) => {
+            const id = req.params.id
+            const { status } = req.body
+            const filter = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    status: status
+                }
+            }
+            // console.log(status);
+            const result = await bannerCollection.updateOne(filter, updatedDoc)
+            res.send(result)
+        })
+        app.delete('/banner/delete/:id', async (req, res) => {
+            const id = req.params.id
+            const filter = { _id: new ObjectId(id) }
+            const result = await bannerCollection.deleteOne(filter)
             res.send(result)
         })
 
