@@ -179,21 +179,151 @@ async function run() {
             const result = await productCollection.insertOne(product)
             res.send(result)
         })
+        // app.get('/products', async (req, res) => {
+        //     const search = req.query.search
+        //     const category = req.query.category
+        //     const query = {}
+        //     if (search) {
+        //         query.name = { $regex: search, $options: "i" };
+        //     }
+        //     if (category) {
+        //         query.category = category
+
+        //     }
+        //     // console.log(query);
+        //     const result = await productCollection.find(query).sort({ _id: -1 }).toArray()
+        //     res.send(result);
+        // })
         app.get('/products', async (req, res) => {
-            const search = req.query.search
-            const category = req.query.category
-            const query = {}
+            const { search, category, gender, brand, material, minPrice, maxPrice, sort } = req.query;
+            const query = {};
+
             if (search) {
                 query.name = { $regex: search, $options: "i" };
             }
             if (category) {
-                query.category = category
-
+                query.category = category;
             }
-            // console.log(query);
-            const result = await productCollection.find(query).sort({ _id: -1 }).toArray()
+            if (gender) {
+                query.gender = gender;
+            }
+            if (brand) {
+                query.origin = brand;
+            }
+            if (material) {
+                query.frameMaterial = material;
+            }
+
+            const pipeline = [
+                { $match: query },
+                {
+                    $project: {
+                        priceNum: { $toDouble: "$price" }, // Convert price to number
+                        name: 1,
+                        category: 1,
+                        gender: 1,
+                        origin: 1,
+                        frameMaterial: 1,
+                        image: 1,
+                        status: 1
+                        // Include other fields as needed
+                    }
+                }
+            ];
+
+            if (minPrice || maxPrice) {
+                const priceFilter = {};
+                if (minPrice) priceFilter.$gte = parseFloat(minPrice);
+                if (maxPrice) priceFilter.$lte = parseFloat(maxPrice);
+                pipeline.push({ $match: { priceNum: priceFilter } });
+            }
+            if (sort) {
+                pipeline.push({ $sort: { priceNum: sort === 'asc' ? 1 : -1 } });
+            } else {
+                pipeline.push({ $sort: { _id: -1 } });
+            }
+
+
+            let sortOption = { _id: -1 };
+            if (sort === 'asc') sortOption = { price: 1 };
+            if (sort === 'desc') sortOption = { price: -1 };
+
+            const result = await productCollection.aggregate(pipeline).toArray();
             res.send(result);
-        })
+        });
+
+        app.get('/filter-options', async (req, res) => {
+            try {
+                // console.log('Fetching filter options...');
+
+                // Replace distinct with aggregation
+                const genders = await productCollection
+                    .aggregate([
+                        { $group: { _id: "$gender" } },
+                        { $match: { _id: { $ne: null } } }, // Exclude null values
+                        { $project: { _id: 0, value: "$_id" } }
+                    ])
+                    .toArray()
+                    .then(results => results.map(r => r.value));
+
+                // console.log('Genders:', genders);
+
+                const brands = await productCollection
+                    .aggregate([
+                        { $group: { _id: "$origin" } },
+                        { $match: { _id: { $ne: null } } },
+                        { $project: { _id: 0, value: "$_id" } }
+                    ])
+                    .toArray()
+                    .then(results => results.map(r => r.value));
+
+                // console.log('Brands:', brands);
+
+                const materials = await productCollection
+                    .aggregate([
+                        { $group: { _id: "$frameMaterial" } },
+                        { $match: { _id: { $ne: null } } },
+                        { $project: { _id: 0, value: "$_id" } }
+                    ])
+                    .toArray()
+                    .then(results => results.map(r => r.value));
+
+                // console.log('Materials:', materials);
+
+                const priceDocs = await productCollection
+                    .aggregate([
+                        {
+                            $match: { price: { $exists: true, $ne: "" } } // Ensure price exists and isn't empty
+                        },
+                        {
+                            $project: {
+                                priceNum: { $toDouble: "$price" } // Convert price string to number
+                            }
+                        },
+                        {
+                            $sort: { priceNum: 1 } // Sort numerically
+                        }
+                    ])
+                    .toArray();
+
+                const minPrice = priceDocs.length > 0 ? priceDocs[0].priceNum : 0;
+                const maxPrice = priceDocs.length > 0 ? priceDocs[priceDocs.length - 1].priceNum : 0;
+
+                res.send({
+                    genders,
+                    brands,
+                    materials,
+                    priceRange: {
+                        min: isNaN(minPrice) ? 0 : minPrice,
+                        max: isNaN(maxPrice) ? 0 : maxPrice
+                    }
+                });
+            } catch (error) {
+                console.error('Error in /filter-options:', error);
+                res.status(500).send({ error: 'Failed to fetch filter options' });
+            }
+        });
+
 
         app.delete('/product/delete/:id', async (req, res) => {
             const id = req.params.id
@@ -245,7 +375,8 @@ async function run() {
             res.send(result)
         })
         app.get('/banners', async (req, res) => {
-            const result = await bannerCollection.aggregate([{ $sample: { size: await bannerCollection.countDocuments() } }]).toArray();
+            // const result = await bannerCollection.aggregate([{ $sample: { size: await bannerCollection.countDocuments() } }]).toArray();
+            const result = await bannerCollection.find().toArray();
             res.send(result);
         });
         app.patch('/banner/status/:id', async (req, res) => {
