@@ -187,13 +187,16 @@ async function run() {
         minPrice,
         maxPrice,
         sort,
-        size 
+        size,
       } = req.query;
       const query = {};
 
       // Build the query based on filters
       if (search) {
-        query.brandName = { $regex: search, $options: "i" }; // Updated to use brandName instead of name
+        query.$or = [
+          { productName: { $regex: search, $options: "i" } },
+          { brandName: { $regex: search, $options: "i" } },
+        ];
       }
       if (category) {
         query.category = category;
@@ -331,12 +334,12 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch filter options" });
       }
     });
-    app.get('/product/:id',async(req,res)=>{
-        const id = req.params.id 
-        const filter = {_id: new ObjectId(id)}
-        const result = await productCollection.findOne(filter)
-        res.send(result)
-    })
+    app.get("/product/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const result = await productCollection.findOne(filter);
+      res.send(result);
+    });
 
     app.delete("/product/delete/:id", async (req, res) => {
       const id = req.params.id;
@@ -344,37 +347,73 @@ async function run() {
       const result = await productCollection.deleteOne(filter);
       res.send(result);
     });
+
+    // update product
     app.patch("/product/update/:id", async (req, res) => {
       const id = req.params.id;
       const product = req.body;
+
+      // Validate ObjectId
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).send({ error: "Invalid product ID" });
+      }
+
       const filter = { _id: new ObjectId(id) };
       const updatedDoc = {
         $set: {
-          name: product.name,
+          productName: product.productName,
+          brandName: product.brandName,
+          productType: product.productType,
+          modelNo: product.modelNo,
           category: product.category,
           gender: product.gender,
           origin: product.origin,
+          manufacturer: product.manufacturer,
+          warranty: product.warranty,
+          color: product.color,
+          price: {
+            amount: product.price.amount,
+            currency: product.price.currency,
+            discount: {
+              percentage: product.price.discount.percentage,
+              discountedAmount: product.price.discount.discountedAmount,
+            },
+          },
+          description: product.description,
+          collection: product.collection,
+          image: product.image, // Array of image URLs
+          status: product.status,
+          frameType: product.frameType,
+          frameShape: product.frameShape,
+          frameMaterial: product.frameMaterial,
+          templeMaterial: product.templeMaterial,
+          frameSize: product.frameSize,
+          frameWidth: product.frameWidth,
+          dimensions: product.dimensions,
+          weight: product.weight,
+          weightGroup: product.weightGroup,
+          frameStyle: product.frameStyle,
+          frameStyleSecondary: product.frameStyleSecondary,
+          prescription: product.prescription,
+          lensMaterial: product.lensMaterial,
           caseMetal: product.caseMetal,
           caseSize: product.caseSize,
           braceletMaterial: product.braceletMaterial,
           glassType: product.glassType,
-          color: product.color,
           wr: product.wr,
-          price: product.price,
-          status: product.status,
-          description: product.description,
-          image: product.image,
-          warranty: product.warranty,
-          frameType: product.frameType,
-          frameMaterial: product.frameMaterial,
-          frameSize: product.frameSize,
-          prescription: product.prescription,
-          lensMaterial: product.lensMaterial,
-          dimensions: product.dimensions,
         },
       };
-      const result = await productCollection.updateOne(filter, updatedDoc);
-      res.send(result);
+
+      try {
+        const result = await productCollection.updateOne(filter, updatedDoc);
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ error: "Product not found" });
+        }
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating product:", error);
+        res.status(500).send({ error: "Failed to update product" });
+      }
     });
 
     // Banner Management
