@@ -32,6 +32,7 @@ async function run() {
     const categoryCollection = client.db("KashemDB").collection("categories");
     const productCollection = client.db("KashemDB").collection("products");
     const bannerCollection = client.db("KashemDB").collection("banners");
+    const cartCollection = client.db("KashemDB").collection("carts");
 
     // jwt related api
     app.post("/jwt", async (req, res) => {
@@ -153,6 +154,14 @@ async function run() {
       res.send(result);
     });
 
+    // delete category
+    app.delete("/category/delete/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const result = await categoryCollection.deleteOne(filter);
+      res.send(result);
+    });
+
     //  'name', 'category', 'gender', 'origin', 'caseMetal', 'caseSize', 'braceletMaterial', 'glassType', 'color', 'wr', 'price', 'status', 'description', 'image'
 
     // product
@@ -188,6 +197,7 @@ async function run() {
         maxPrice,
         sort,
         size,
+        type,
       } = req.query;
       const query = {};
 
@@ -212,6 +222,9 @@ async function run() {
       }
       if (size) {
         query.frameSize = size;
+      }
+      if (type) {
+        query.frameType = type;
       }
 
       const pipeline = [
@@ -289,9 +302,21 @@ async function run() {
           ])
           .toArray()
           .then((results) => results.map((r) => r.value));
+
+        // frame size
         const sizes = await productCollection
           .aggregate([
             { $group: { _id: "$frameSize" } },
+            { $match: { _id: { $ne: null } } },
+            { $project: { _id: 0, value: "$_id" } },
+          ])
+          .toArray()
+          .then((results) => results.map((r) => r.value));
+
+        // frame type
+        const types = await productCollection
+          .aggregate([
+            { $group: { _id: "$frameType" } },
             { $match: { _id: { $ne: null } } },
             { $project: { _id: 0, value: "$_id" } },
           ])
@@ -324,6 +349,7 @@ async function run() {
           brands,
           materials,
           sizes,
+          types,
           priceRange: {
             min: isNaN(minPrice) ? 0 : minPrice,
             max: isNaN(maxPrice) ? 0 : maxPrice,
@@ -444,6 +470,41 @@ async function run() {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const result = await bannerCollection.deleteOne(filter);
+      res.send(result);
+    });
+
+    // ---------------------------- cart section------------------------------
+    // add to cart
+    app.post("/carts", async (req, res) => {
+      const cart = req.body;
+      // console.log(cart);
+
+      const existingItem = await cartCollection.findOne({
+        productId: cart.productId, // Changed from medicineId to productId
+        "customer.customerEmail": cart.customer.customerEmail,
+      });
+
+      if (existingItem) {
+        return res.status(400).json({
+          error: "Item already exists in cart",
+          existingItem: {
+            _id: existingItem._id,
+            productName: existingItem.productName,
+            quantity: existingItem.quantity,
+          },
+        });
+      }
+
+      const result = await cartCollection.insertOne(cart);
+      res.send(result);
+    });
+
+    // get cart
+    app.get("/carts", async (req, res) => {
+      // console.log(req.query);
+      const result = await cartCollection
+        .find({ "customer.customerEmail": req.query.email })
+        .toArray();
       res.send(result);
     });
 
