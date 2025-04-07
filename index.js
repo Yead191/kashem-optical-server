@@ -33,6 +33,7 @@ async function run() {
     const productCollection = client.db("KashemDB").collection("products");
     const bannerCollection = client.db("KashemDB").collection("banners");
     const cartCollection = client.db("KashemDB").collection("carts");
+    const orderCollection = client.db("KashemDB").collection("orders");
 
     // jwt related api
     app.post("/jwt", async (req, res) => {
@@ -123,22 +124,26 @@ async function run() {
 
     // category
 
+    // post category
     app.post("/categories", async (req, res) => {
       const category = req.body;
       const result = await categoryCollection.insertOne(category);
       res.send(result);
     });
+
+    // get category
     app.get("/categories", async (req, res) => {
       const result = await categoryCollection.find().toArray();
       res.send(result);
     });
+    // get single category
     app.get("/category/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const result = await categoryCollection.findOne(filter);
       res.send(result);
     });
-
+    // update category
     app.patch("/category/update/:id", async (req, res) => {
       const id = req.params.id;
       const data = req.body;
@@ -506,6 +511,123 @@ async function run() {
         .find({ "customer.customerEmail": req.query.email })
         .toArray();
       res.send(result);
+    });
+
+    // update quantity
+    app.patch("/carts/quantity/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { quantity } = req.body;
+
+        // Validate quantity
+        if (!quantity || typeof quantity !== "number" || quantity < 1) {
+          return res.status(400).json({ error: "Invalid quantity provided" });
+        }
+
+        const result = await cartCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { quantity } }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ error: "Cart item not found" });
+        }
+
+        res.status(200).json({
+          message: "Quantity updated successfully",
+          modifiedCount: result.modifiedCount,
+        });
+      } catch (error) {
+        console.error("Error updating quantity:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
+    // Delete single cart item
+    app.delete("/carts/delete/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        const result = await cartCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).json({ error: "Cart item not found" });
+        }
+
+        res.status(200).json({
+          message: "Cart item deleted successfully",
+          deletedCount: result.deletedCount,
+        });
+      } catch (error) {
+        console.error("Error deleting cart item:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
+    // Clear cart by email
+    app.delete("/carts/clear/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        const result = await cartCollection.deleteMany({
+          "customer.customerEmail": email,
+        });
+
+        if (result.deletedCount === 0) {
+          return res
+            .status(404)
+            .json({ error: "No cart items found for this user" });
+        }
+
+        res.status(200).json({
+          message: "Cart cleared successfully",
+          deletedCount: result.deletedCount,
+        });
+      } catch (error) {
+        console.error("Error clearing cart:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
+    // ---------------------------------------------Order Related Routes--------------------------------
+    app.post("/orders", async (req, res) => {
+      try {
+        const order = req.body;
+        const result = await orderCollection.insertOne(order);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+
+    // GET all orders or orders by email
+    app.get("/orders", async (req, res) => {
+      try {
+        const email = req.query.email;
+        const query = {};
+
+        // If email is provided, filter orders by customer email
+        if (email) {
+          query["customerInfo.email"] = email;
+        }
+
+        // Fetch orders, sorted by date in descending order (-1)
+        const result = await orderCollection
+          .find(query)
+          .sort({ date: -1 })
+          .toArray();
+
+        // Send success response with orders
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).json({
+          message: "Failed to retrieve orders",
+          error: error.message || "Internal server error",
+        });
+      }
     });
 
     await client.db("admin").command({ ping: 1 });
