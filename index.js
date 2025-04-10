@@ -317,6 +317,15 @@ async function run() {
           ])
           .toArray()
           .then((results) => results.map((r) => r.value));
+        // color
+        const colors = await productCollection
+          .aggregate([
+            { $group: { _id: "$color" } },
+            { $match: { _id: { $ne: null } } },
+            { $project: { _id: 0, value: "$_id" } },
+          ])
+          .toArray()
+          .then((results) => results.map((r) => r.value));
 
         // frame type
         const types = await productCollection
@@ -355,6 +364,7 @@ async function run() {
           materials,
           sizes,
           types,
+          colors,
           priceRange: {
             min: isNaN(minPrice) ? 0 : minPrice,
             max: isNaN(maxPrice) ? 0 : maxPrice,
@@ -602,15 +612,24 @@ async function run() {
       }
     });
 
-    // GET all orders or orders by email
+    // GET all orders or orders by email, with optional search by customer name or phone
     app.get("/orders", async (req, res) => {
       try {
         const email = req.query.email;
+        const search = req.query.search; // Add search query parameter
         const query = {};
 
         // If email is provided, filter orders by customer email
         if (email) {
           query["customerInfo.email"] = email;
+        }
+
+        // If search is provided, filter by customer name or phone
+        if (search) {
+          query.$or = [
+            { "customerInfo.name": { $regex: search, $options: "i" } },
+            { "customerInfo.phone": { $regex: search, $options: "i" } },
+          ];
         }
 
         // Fetch orders, sorted by date in descending order (-1)
@@ -625,6 +644,131 @@ async function run() {
         console.error("Error fetching orders:", error);
         res.status(500).json({
           message: "Failed to retrieve orders",
+          error: error.message || "Internal server error",
+        });
+      }
+    });
+    // change order status
+    app.patch("/orders/change-status/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { orderStatus } = req.body;
+
+        // Validate input
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ message: "Invalid order ID" });
+        }
+        if (!orderStatus) {
+          return res.status(400).json({ message: "Order status is required" });
+        }
+
+        // Define filter and update operation
+        const filter = { _id: new ObjectId(id) };
+        const updatedOrderStatus = {
+          $set: { orderStatus: orderStatus },
+        };
+
+        const result = await orderCollection.updateOne(
+          filter,
+          updatedOrderStatus
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ message: "Order not found" });
+        }
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating order status:", error);
+        res.status(500).json({
+          message: "Failed to update order status",
+          error: error.message || "Internal server error",
+        });
+      }
+    });
+
+    // change payment status
+    app.patch("/orders/payment/:id", async (req, res) => {
+      const id = req.params.id;
+      const { paymentStatus } = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          paymentStatus: paymentStatus,
+        },
+      };
+      const result = await orderCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+
+    // generate invoice
+
+    app.get("/invoice/:orderId", async (req, res) => {
+      try {
+        const orderId = req.params.orderId;
+
+        // Validate the orderId as a valid ObjectId
+        if (!ObjectId.isValid(orderId)) {
+          return res.status(400).json({ message: "Invalid order ID" });
+        }
+
+        const result = await orderCollection
+          .aggregate([
+            {
+              // Match the document by _id (orderId)
+              $match: {
+                _id: new ObjectId(orderId),
+              },
+            },
+            {
+              // Unwind the products array to process each item
+              $unwind: "$products",
+            },
+            {
+              // Group the data back together with formatted invoice details
+              $group: {
+                _id: "$_id",
+                customerInfo: { $first: "$customerInfo" },
+                totalPrice: { $first: "$totalPrice" },
+                paymentStatus: { $first: "$paymentStatus" },
+                orderStatus: { $first: "$orderStatus" },
+                date: { $first: "$date" },
+                products: {
+                  $push: {
+                    productId: "$products.productId",
+                    productName: "$products.productName",
+                    quantity: "$products.quantity",
+                    price: "$products.price",
+                    subtotal: "$products.subtotal",
+                    brandName: "$products.brandName",
+                  },
+                },
+              },
+            },
+            {
+              // Project to shape the final output
+              $project: {
+                _id: 1,
+                customerInfo: 1,
+                totalPrice: 1,
+                paymentStatus: 1,
+                orderStatus: 1,
+                date: 1,
+                products: 1,
+              },
+            },
+          ])
+          .toArray();
+
+        // Return the first result or an empty object if no match found
+        if (result.length === 0) {
+          return res.status(404).json({ message: "Order not found" });
+        }
+
+        res.status(200).json(result[0]);
+      } catch (error) {
+        console.error("Error generating invoice:", error);
+        res.status(500).json({
+          message: "Failed to generate invoice",
           error: error.message || "Internal server error",
         });
       }
