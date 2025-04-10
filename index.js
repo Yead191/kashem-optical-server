@@ -34,6 +34,7 @@ async function run() {
     const bannerCollection = client.db("KashemDB").collection("banners");
     const cartCollection = client.db("KashemDB").collection("carts");
     const orderCollection = client.db("KashemDB").collection("orders");
+    const patientCollection = client.db("KashemDB").collection("patients");
 
     // jwt related api
     app.post("/jwt", async (req, res) => {
@@ -772,6 +773,44 @@ async function run() {
           error: error.message || "Internal server error",
         });
       }
+    });
+
+    // ----------------------------------------Patient related APIS------------------------------
+    app.post("/patients", async (req, res) => {
+      const patient = req.body;
+
+      // Check if patient already exists by phone number
+      const existingPatient = await patientCollection.findOne({
+        phone: patient.phone,
+      });
+
+      if (existingPatient) {
+        return res.status(400).send({
+          message: "Patient with this phone number already exists",
+          existingPatient: existingPatient,
+        });
+      }
+      // If patient doesn't exist, insert the new patient
+      const result = await patientCollection.insertOne(patient);
+      res.send(result);
+    });
+
+    app.get("/patients", async (req, res) => {
+      const search = req.query.search;
+      const query = {};
+      // If search is provided, filter by customer name or phone
+      if (search) {
+        query.$or = [
+          { name: { $regex: search, $options: "i" } },
+          { phone: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      const result = await patientCollection
+        .find(query)
+        .sort({ date: -1 })
+        .toArray();
+      res.send(result);
     });
 
     await client.db("admin").command({ ping: 1 });
