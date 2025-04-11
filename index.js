@@ -779,20 +779,37 @@ async function run() {
     app.post("/patients", async (req, res) => {
       const patient = req.body;
 
-      // Check if patient already exists by phone number
-      const existingPatient = await patientCollection.findOne({
-        phone: patient.phone,
-      });
-
-      if (existingPatient) {
-        return res.status(400).send({
-          message: "Patient with this phone number already exists",
-          existingPatient: existingPatient,
-        });
-      }
-      // If patient doesn't exist, insert the new patient
       const result = await patientCollection.insertOne(patient);
       res.send(result);
+    });
+    // update patient
+    app.patch("/patients/:id", async (req, res) => {
+      const id = req.params.id;
+      const updatedPatient = req.body;
+
+      try {
+        // Validate ObjectId
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ error: "Invalid patient ID" });
+        }
+
+        // Remove _id from updatedPatient to prevent modifying it
+        delete updatedPatient._id;
+
+        const result = await patientCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updatedPatient }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ error: "Patient not found" });
+        }
+
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating patient:", error);
+        res.status(500).send({ error: "Internal server error" });
+      }
     });
 
     app.get("/patients", async (req, res) => {
@@ -810,6 +827,15 @@ async function run() {
         .find(query)
         .sort({ date: -1 })
         .toArray();
+      res.send(result);
+    });
+
+    // delete patient
+    app.delete("/patient/delete/:id", async (req, res) => {
+      const id = req.params.id;
+      console.log(id);
+      const filter = { _id: new ObjectId(id) };
+      const result = await patientCollection.deleteOne(filter);
       res.send(result);
     });
 
