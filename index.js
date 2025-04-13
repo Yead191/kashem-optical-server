@@ -839,6 +839,51 @@ async function run() {
       res.send(result);
     });
 
+    // ----------------------------------------Stats related APIS------------------------------
+    app.get("/admin-stats", async (req, res) => {
+      const totalBanners = await bannerCollection.estimatedDocumentCount();
+      const activeBanners = await bannerCollection.countDocuments({
+        status: "added",
+      });
+      const inactiveBanners = await bannerCollection.countDocuments({
+        status: "removed",
+      });
+
+      // product stats
+      const totalProduct = await productCollection.estimatedDocumentCount();
+      const totalInStockProduct = await productCollection.countDocuments({
+        status: "In Stock",
+      });
+      const totalOutOfStockProduct = await productCollection.countDocuments({
+        status: "Out of Stock",
+      });
+      const totalUsers = await userCollection.estimatedDocumentCount();
+      const totalAdmin = await userCollection.countDocuments({
+        role: "Admin",
+      });
+      const totalPatient = await patientCollection.estimatedDocumentCount()
+
+      // Category Breakdown
+      const productsPerCategory = await productCollection
+        .aggregate([
+          { $group: { _id: "$category", count: { $sum: 1 } } },
+          { $project: { _id: 0, category: "$_id", count: 1 } },
+          { $sort: { count: -1 } },
+        ])
+        .toArray();
+        res.send({
+          totalAdmin,
+          activeBanners,
+          inactiveBanners,
+          totalProduct,
+          totalInStockProduct,
+          totalOutOfStockProduct,
+          totalUsers,
+          totalPatient,
+          productsPerCategory
+        })
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
