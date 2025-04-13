@@ -861,7 +861,7 @@ async function run() {
       const totalAdmin = await userCollection.countDocuments({
         role: "Admin",
       });
-      const totalPatient = await patientCollection.estimatedDocumentCount()
+      const totalPatient = await patientCollection.estimatedDocumentCount();
 
       // Category Breakdown
       const productsPerCategory = await productCollection
@@ -871,17 +871,202 @@ async function run() {
           { $sort: { count: -1 } },
         ])
         .toArray();
+      res.send({
+        totalAdmin,
+        activeBanners,
+        inactiveBanners,
+        totalProduct,
+        totalInStockProduct,
+        totalOutOfStockProduct,
+        totalUsers,
+        totalPatient,
+        productsPerCategory,
+      });
+    });
+
+    // ----------------------------------------sales-repot APIS------------------------------
+
+    app.get("/sales-report", async (req, res) => {
+      try {
+        // Total orders
+        const totalOrders = await orderCollection.estimatedDocumentCount();
+
+        // Delivered orders
+        const deliveredOrders = await orderCollection.countDocuments({
+          orderStatus: "Delivered",
+        });
+
+        // Pending orders
+        const pendingOrders = await orderCollection.countDocuments({
+          orderStatus: "Pending",
+        });
+
+        // Total revenue
+        const totalRevenueResult = await orderCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "Paid",
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalRevenue: { $sum: { $toDouble: "$totalPrice" } },
+              },
+            },
+          ])
+          .toArray();
+
+        const totalRevenue = totalRevenueResult[0]?.totalRevenue || 0;
+
+        // Revenue per day with totalQty
+        const revenuePerDay = await orderCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "Paid",
+              },
+            },
+            {
+              $unwind: "$products", // Flatten products array
+            },
+            {
+              $group: {
+                _id: {
+                  $dateToString: {
+                    format: "%Y-%m-%d",
+                    date: { $toDate: "$date" }, // Convert string to Date
+                  },
+                },
+                totalRevenue: { $sum: { $toDouble: "$totalPrice" } },
+                totalQty: { $sum: "$products.quantity" }, // Sum product quantities
+              },
+            },
+            {
+              $sort: {
+                _id: 1,
+              },
+            },
+          ])
+          .toArray();
+
+        // Top selling products
+        const topSellingProducts = await orderCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "Paid", // Only include paid orders
+              },
+            },
+            {
+              $unwind: "$products",
+            },
+            {
+              $group: {
+                _id: "$products.productName",
+                totalQty: { $sum: "$products.quantity" },
+              },
+            },
+            {
+              $project: {
+                product: "$_id",
+                totalQty: 1,
+                _id: 0,
+              },
+            },
+            {
+              $sort: {
+                totalQty: -1,
+              },
+            },
+            {
+              $limit: 5, // Top 5 products
+            },
+          ])
+          .toArray();
+
+        // Top customers
+        const topCustomers = await orderCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "Paid", // Only include paid orders
+              },
+            },
+            {
+              $group: {
+                _id: "$customerInfo.email",
+                name: { $first: "$customerInfo.name" },
+                phone: { $first: "$customerInfo.phone" },
+                totalOrders: { $sum: 1 },
+                totalSpent: { $sum: { $toDouble: "$totalPrice" } },
+              },
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "_id",
+                foreignField: "email",
+                as: "userInfo",
+              },
+            },
+            {
+              $unwind: {
+                path: "$userInfo",
+                preserveNullAndEmptyArrays: true, // Keep customers even if no match in users collection
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                name: 1,
+                email: "$_id",
+                phone: 1,
+                userId: "$userInfo._id", // Use _id from users collection instead of uid
+                photo: "$userInfo.image", // Map image to photo
+                totalOrders: 1,
+                totalSpent: 1,
+              },
+            },
+            { $sort: { totalSpent: -1 } },
+            { $limit: 5 }, // Limit to top 5 customers
+          ])
+          .toArray();
+
+        // Revenue per division
+        const revenuePerDivision = await orderCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "Paid", // Only include paid orders
+              },
+            },
+            {
+              $group: {
+                _id: "$customerInfo.division",
+                totalRevenue: { $sum: { $toDouble: "$totalPrice" } },
+                totalOrders: { $sum: 1 },
+              },
+            },
+            { $sort: { totalRevenue: -1 } },
+          ])
+          .toArray();
+
         res.send({
-          totalAdmin,
-          activeBanners,
-          inactiveBanners,
-          totalProduct,
-          totalInStockProduct,
-          totalOutOfStockProduct,
-          totalUsers,
-          totalPatient,
-          productsPerCategory
-        })
+          totalOrders,
+          deliveredOrders,
+          pendingOrders,
+          totalRevenue,
+          revenuePerDay,
+          topSellingProducts,
+          topCustomers,
+          revenuePerDivision,
+        });
+      } catch (error) {
+        console.error("Error in /sales-report:", error);
+        res.status(500).send({ error: "Internal server error" });
+      }
     });
 
     await client.db("admin").command({ ping: 1 });
