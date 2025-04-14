@@ -732,6 +732,8 @@ async function run() {
                 totalPrice: { $first: "$totalPrice" },
                 paymentStatus: { $first: "$paymentStatus" },
                 orderStatus: { $first: "$orderStatus" },
+                discountPercentage: { $first: "$discountPercentage" },
+                discountAmount: { $first: "$discountAmount" },
                 date: { $first: "$date" },
                 products: {
                   $push: {
@@ -753,6 +755,8 @@ async function run() {
                 totalPrice: 1,
                 paymentStatus: 1,
                 orderStatus: 1,
+                discountPercentage: 1,
+                discountAmount: 1,
                 date: 1,
                 products: 1,
               },
@@ -1095,6 +1099,79 @@ async function run() {
       const filter = { email: email };
       const result = await userCollection.findOne(filter);
       res.send({ discountVoucher: result?.discountVoucher || null });
+    });
+
+    app.get("/top-selling-products", async (req, res) => {
+      const topSellingProducts = await orderCollection
+        .aggregate([
+          {
+            $match: {
+              paymentStatus: "Paid", // Only include paid orders
+            },
+          },
+          {
+            $unwind: "$products", // Flatten the products array
+          },
+          {
+            $group: {
+              _id: {
+                productId: "$products.productId",
+                productName: "$products.productName",
+                price: "$products.price",
+                brandName: "$products.brandName",
+                image: "$products.image",
+              },
+              totalQty: { $sum: "$products.quantity" },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              productId: "$_id.productId",
+              productName: "$_id.productName",
+              price: "$_id.price",
+              brandName: "$_id.brandName",
+              image: "$_id.image",
+              totalQty: 1,
+            },
+          },
+          {
+            $sort: {
+              totalQty: -1, // Sort by total quantity in descending order
+            },
+          },
+          {
+            $limit: 10, // Top 10 products
+          },
+        ])
+        .toArray();
+      res.send(topSellingProducts);
+    });
+
+    // get latest 9 products
+    // GET latest 9 products
+    app.get("/latest-products", async (req, res) => {
+      try {
+        const latestProducts = await productCollection
+          .find()
+          .sort({ createdAt: -1 }) // Sort by creation date, newest first
+          .limit(9)
+          .project({
+            productId: "$_id",
+            productName: 1,
+            price: 1,
+            brandName: 1,
+            image: 1,
+            status: 1,
+            _id: 0,
+          })
+          .toArray();
+
+        res.send(latestProducts);
+      } catch (error) {
+        console.error("Error fetching latest products:", error);
+        res.status(500).json({ error: "Failed to fetch latest products" });
+      }
     });
 
     await client.db("admin").command({ ping: 1 });
