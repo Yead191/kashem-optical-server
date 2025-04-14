@@ -1029,8 +1029,7 @@ async function run() {
                 totalSpent: 1,
               },
             },
-            { $sort: { totalSpent: -1 } },
-            { $limit: 5 }, // Limit to top 5 customers
+            { $sort: { totalSpent: -1 } }, // Sort by totalSpent in descending order
           ])
           .toArray();
 
@@ -1067,6 +1066,35 @@ async function run() {
         console.error("Error in /sales-report:", error);
         res.status(500).send({ error: "Internal server error" });
       }
+    });
+
+    // discount voucher
+    // update shopping discount
+    app.patch("/user/update-discount/:email", async (req, res) => {
+      const email = req.params.email;
+      // console.log(email);
+      const { discount } = req.body;
+      const filter = { email: email };
+      // console.log(discount, email)
+
+      const updatedDoc = {
+        $set: {
+          discountVoucher: parseInt(discount),
+        },
+      };
+      try {
+        const result = await userCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: "Failed to update discount" });
+      }
+    });
+
+    app.get("/users/discount/:email", async (req, res) => {
+      const email = req.params.email;
+      const filter = { email: email };
+      const result = await userCollection.findOne(filter);
+      res.send({ discountVoucher: result?.discountVoucher || null });
     });
 
     await client.db("admin").command({ ping: 1 });
