@@ -732,6 +732,8 @@ async function run() {
                 totalPrice: { $first: "$totalPrice" },
                 paymentStatus: { $first: "$paymentStatus" },
                 orderStatus: { $first: "$orderStatus" },
+                discountPercentage: { $first: "$discountPercentage" },
+                discountAmount: { $first: "$discountAmount" },
                 date: { $first: "$date" },
                 products: {
                   $push: {
@@ -753,6 +755,8 @@ async function run() {
                 totalPrice: 1,
                 paymentStatus: 1,
                 orderStatus: 1,
+                discountPercentage: 1,
+                discountAmount: 1,
                 date: 1,
                 products: 1,
               },
@@ -837,6 +841,337 @@ async function run() {
       const filter = { _id: new ObjectId(id) };
       const result = await patientCollection.deleteOne(filter);
       res.send(result);
+    });
+
+    // ----------------------------------------Stats related APIS------------------------------
+    app.get("/admin-stats", async (req, res) => {
+      const totalBanners = await bannerCollection.estimatedDocumentCount();
+      const activeBanners = await bannerCollection.countDocuments({
+        status: "added",
+      });
+      const inactiveBanners = await bannerCollection.countDocuments({
+        status: "removed",
+      });
+
+      // product stats
+      const totalProduct = await productCollection.estimatedDocumentCount();
+      const totalInStockProduct = await productCollection.countDocuments({
+        status: "In Stock",
+      });
+      const totalOutOfStockProduct = await productCollection.countDocuments({
+        status: "Out of Stock",
+      });
+      const totalUsers = await userCollection.estimatedDocumentCount();
+      const totalAdmin = await userCollection.countDocuments({
+        role: "Admin",
+      });
+      const totalPatient = await patientCollection.estimatedDocumentCount();
+
+      // Category Breakdown
+      const productsPerCategory = await productCollection
+        .aggregate([
+          { $group: { _id: "$category", count: { $sum: 1 } } },
+          { $project: { _id: 0, category: "$_id", count: 1 } },
+          { $sort: { count: -1 } },
+        ])
+        .toArray();
+      res.send({
+        totalAdmin,
+        activeBanners,
+        inactiveBanners,
+        totalProduct,
+        totalInStockProduct,
+        totalOutOfStockProduct,
+        totalUsers,
+        totalPatient,
+        productsPerCategory,
+      });
+    });
+
+    // ----------------------------------------sales-repot APIS------------------------------
+
+    app.get("/sales-report", async (req, res) => {
+      try {
+        // Total orders
+        const totalOrders = await orderCollection.estimatedDocumentCount();
+
+        // Delivered orders
+        const deliveredOrders = await orderCollection.countDocuments({
+          orderStatus: "Delivered",
+        });
+
+        // Pending orders
+        const pendingOrders = await orderCollection.countDocuments({
+          orderStatus: "Pending",
+        });
+
+        // Total revenue
+        const totalRevenueResult = await orderCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "Paid",
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalRevenue: { $sum: { $toDouble: "$totalPrice" } },
+              },
+            },
+          ])
+          .toArray();
+
+        const totalRevenue = totalRevenueResult[0]?.totalRevenue || 0;
+
+        // Revenue per day with totalQty
+        const revenuePerDay = await orderCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "Paid",
+              },
+            },
+            {
+              $unwind: "$products", // Flatten products array
+            },
+            {
+              $group: {
+                _id: {
+                  $dateToString: {
+                    format: "%Y-%m-%d",
+                    date: { $toDate: "$date" }, // Convert string to Date
+                  },
+                },
+                totalRevenue: { $sum: { $toDouble: "$totalPrice" } },
+                totalQty: { $sum: "$products.quantity" }, // Sum product quantities
+              },
+            },
+            {
+              $sort: {
+                _id: 1,
+              },
+            },
+          ])
+          .toArray();
+
+        // Top selling products
+        const topSellingProducts = await orderCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "Paid", // Only include paid orders
+              },
+            },
+            {
+              $unwind: "$products",
+            },
+            {
+              $group: {
+                _id: "$products.productName",
+                totalQty: { $sum: "$products.quantity" },
+              },
+            },
+            {
+              $project: {
+                product: "$_id",
+                totalQty: 1,
+                _id: 0,
+              },
+            },
+            {
+              $sort: {
+                totalQty: -1,
+              },
+            },
+            {
+              $limit: 5, // Top 5 products
+            },
+          ])
+          .toArray();
+
+        // Top customers
+        const topCustomers = await orderCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "Paid", // Only include paid orders
+              },
+            },
+            {
+              $group: {
+                _id: "$customerInfo.email",
+                name: { $first: "$customerInfo.name" },
+                phone: { $first: "$customerInfo.phone" },
+                totalOrders: { $sum: 1 },
+                totalSpent: { $sum: { $toDouble: "$totalPrice" } },
+              },
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "_id",
+                foreignField: "email",
+                as: "userInfo",
+              },
+            },
+            {
+              $unwind: {
+                path: "$userInfo",
+                preserveNullAndEmptyArrays: true, // Keep customers even if no match in users collection
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                name: 1,
+                email: "$_id",
+                phone: 1,
+                userId: "$userInfo._id", // Use _id from users collection instead of uid
+                photo: "$userInfo.image", // Map image to photo
+                totalOrders: 1,
+                totalSpent: 1,
+              },
+            },
+            { $sort: { totalSpent: -1 } }, // Sort by totalSpent in descending order
+          ])
+          .toArray();
+
+        // Revenue per division
+        const revenuePerDivision = await orderCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "Paid", // Only include paid orders
+              },
+            },
+            {
+              $group: {
+                _id: "$customerInfo.division",
+                totalRevenue: { $sum: { $toDouble: "$totalPrice" } },
+                totalOrders: { $sum: 1 },
+              },
+            },
+            { $sort: { totalRevenue: -1 } },
+          ])
+          .toArray();
+
+        res.send({
+          totalOrders,
+          deliveredOrders,
+          pendingOrders,
+          totalRevenue,
+          revenuePerDay,
+          topSellingProducts,
+          topCustomers,
+          revenuePerDivision,
+        });
+      } catch (error) {
+        console.error("Error in /sales-report:", error);
+        res.status(500).send({ error: "Internal server error" });
+      }
+    });
+
+    // discount voucher
+    // update shopping discount
+    app.patch("/user/update-discount/:email", async (req, res) => {
+      const email = req.params.email;
+      // console.log(email);
+      const { discount } = req.body;
+      const filter = { email: email };
+      // console.log(discount, email)
+
+      const updatedDoc = {
+        $set: {
+          discountVoucher: parseInt(discount),
+        },
+      };
+      try {
+        const result = await userCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: "Failed to update discount" });
+      }
+    });
+
+    app.get("/users/discount/:email", async (req, res) => {
+      const email = req.params.email;
+      const filter = { email: email };
+      const result = await userCollection.findOne(filter);
+      res.send({ discountVoucher: result?.discountVoucher || null });
+    });
+
+    app.get("/top-selling-products", async (req, res) => {
+      const topSellingProducts = await orderCollection
+        .aggregate([
+          {
+            $match: {
+              paymentStatus: "Paid", // Only include paid orders
+            },
+          },
+          {
+            $unwind: "$products", // Flatten the products array
+          },
+          {
+            $group: {
+              _id: {
+                productId: "$products.productId",
+                productName: "$products.productName",
+                price: "$products.price",
+                brandName: "$products.brandName",
+                image: "$products.image",
+              },
+              totalQty: { $sum: "$products.quantity" },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              productId: "$_id.productId",
+              productName: "$_id.productName",
+              price: "$_id.price",
+              brandName: "$_id.brandName",
+              image: "$_id.image",
+              totalQty: 1,
+            },
+          },
+          {
+            $sort: {
+              totalQty: -1, // Sort by total quantity in descending order
+            },
+          },
+          {
+            $limit: 10, // Top 10 products
+          },
+        ])
+        .toArray();
+      res.send(topSellingProducts);
+    });
+
+    // get latest 9 products
+    // GET latest 9 products
+    app.get("/latest-products", async (req, res) => {
+      try {
+        const latestProducts = await productCollection
+          .find()
+          .sort({ createdAt: -1 }) // Sort by creation date, newest first
+          .limit(9)
+          .project({
+            productId: "$_id",
+            productName: 1,
+            price: 1,
+            brandName: 1,
+            image: 1,
+            status: 1,
+            _id: 0,
+          })
+          .toArray();
+
+        res.send(latestProducts);
+      } catch (error) {
+        console.error("Error fetching latest products:", error);
+        res.status(500).json({ error: "Failed to fetch latest products" });
+      }
     });
 
     await client.db("admin").command({ ping: 1 });
