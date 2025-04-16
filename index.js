@@ -224,6 +224,7 @@ async function run() {
         query.$or = [
           { productName: { $regex: search, $options: "i" } },
           { brandName: { $regex: search, $options: "i" } },
+          { category: { $regex: search, $options: "i" } },
         ];
       }
       if (category) {
