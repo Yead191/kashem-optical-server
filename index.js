@@ -10,7 +10,7 @@ const port = process.env.PORT || 5000;
 app.use(express.json());
 app.use(cors());
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.pjwkg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const uri = process.env.DB_URI;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -121,6 +121,18 @@ async function run() {
       const result = await userCollection.findOne(query);
       // console.log(result);
       res.send(result);
+    });
+    // get role
+    app.get("/user/role/:email", async (req, res) => {
+      const email = req.params.email;
+      const filter = { email: email };
+      const user = await userCollection.findOne(filter);
+
+      if (!user) {
+        return res.status(404).send({ role: null, message: "User not found" });
+      }
+
+      res.send({ role: user.role });
     });
 
     // category
@@ -1154,7 +1166,7 @@ async function run() {
       try {
         const latestProducts = await productCollection
           .find()
-          .sort({ createdAt: -1 }) // Sort by creation date, newest first
+          .sort({ _id: -1 }) // Sort by creation date, newest first
           .limit(9)
           .project({
             productId: "$_id",
