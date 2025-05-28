@@ -1155,7 +1155,7 @@ async function run() {
         const latestProducts = await productCollection
           .find()
           .sort({ createdAt: -1 }) // Sort by creation date, newest first
-          .limit(9)
+          .limit(8)
           .project({
             productId: "$_id",
             productName: 1,
