@@ -10,7 +10,7 @@ const port = process.env.PORT || 5000;
 app.use(express.json());
 app.use(cors());
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.pjwkg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const uri = process.env.DB_URI;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -122,6 +122,18 @@ async function run() {
       // console.log(result);
       res.send(result);
     });
+    // get role
+    app.get("/user/role/:email", async (req, res) => {
+      const email = req.params.email;
+      const filter = { email: email };
+      const user = await userCollection.findOne(filter);
+
+      if (!user) {
+        return res.status(404).send({ role: null, message: "User not found" });
+      }
+
+      res.send({ role: user.role });
+    });
 
     // category
 
@@ -212,6 +224,7 @@ async function run() {
         query.$or = [
           { productName: { $regex: search, $options: "i" } },
           { brandName: { $regex: search, $options: "i" } },
+          { category: { $regex: search, $options: "i" } },
         ];
       }
       if (category) {
@@ -377,10 +390,18 @@ async function run() {
       }
     });
     app.get("/product/:id", async (req, res) => {
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
-      const result = await productCollection.findOne(filter);
-      res.send(result);
+      try {
+        const id = req.params.id;
+        if (!id) {
+          return res.status(400).send({ error: "Product ID is required" });
+        }
+        const filter = { _id: new ObjectId(id) };
+        const result = await productCollection.findOne(filter);
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching product:", error);
+        res.status(500).send({ error: "Failed to fetch product" });
+      }
     });
 
     app.delete("/product/delete/:id", async (req, res) => {
@@ -465,10 +486,16 @@ async function run() {
       res.send(result);
     });
     app.get("/banners", async (req, res) => {
-      // const result = await bannerCollection.aggregate([{ $sample: { size: await bannerCollection.countDocuments() } }]).toArray();
-      const result = await bannerCollection.find().toArray();
-      res.send(result);
+      try {
+        // const result = await bannerCollection.aggregate([{ $sample: { size: await bannerCollection.countDocuments() } }]).toArray();
+        const result = await bannerCollection.find().toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching banners:", error);
+        res.status(500).send({ message: "Failed to fetch banners" });
+      }
     });
+    // update banner status
     app.patch("/banner/status/:id", async (req, res) => {
       const id = req.params.id;
       const { status } = req.body;
@@ -482,11 +509,53 @@ async function run() {
       const result = await bannerCollection.updateOne(filter, updatedDoc);
       res.send(result);
     });
+    // delete banner
     app.delete("/banner/delete/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const result = await bannerCollection.deleteOne(filter);
       res.send(result);
+    });
+
+    // PATCH /banners/:id
+    app.patch("/banners/update/:id", async (req, res) => {
+      const bannerId = req.params.id;
+      const updatedFields = req.body;
+
+      if (!ObjectId.isValid(bannerId)) {
+        return res.status(400).json({ message: "Invalid banner ID" });
+      }
+
+      try {
+        // 1. Get the existing banner
+        const existingBanner = await bannerCollection.findOne({
+          _id: new ObjectId(bannerId),
+        });
+
+        if (!existingBanner) {
+          return res.status(404).json({ message: "Banner not found" });
+        }
+
+        // 2. Merge old and new data
+        const updatedBanner = {
+          ...existingBanner,
+          ...updatedFields,
+          // updatedAt: new Date().toISOString().split("T")[0],
+        };
+
+        // 3. Apply update
+        const result = await bannerCollection.updateOne(
+          { _id: new ObjectId(bannerId) },
+          { $set: updatedBanner }
+        );
+
+        res
+          .status(200)
+          .json({ message: "Banner updated successfully", updatedBanner });
+      } catch (error) {
+        console.error("Error updating banner:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
     });
 
     // ---------------------------- cart section------------------------------
@@ -1120,6 +1189,7 @@ async function run() {
                 price: "$products.price",
                 brandName: "$products.brandName",
                 image: "$products.image",
+                frameSize: "$products.frameSize",
               },
               totalQty: { $sum: "$products.quantity" },
             },
@@ -1132,6 +1202,7 @@ async function run() {
               price: "$_id.price",
               brandName: "$_id.brandName",
               image: "$_id.image",
+              frameSize: "$_id.frameSize",
               totalQty: 1,
             },
           },
@@ -1154,13 +1225,14 @@ async function run() {
       try {
         const latestProducts = await productCollection
           .find()
-          .sort({ createdAt: -1 }) // Sort by creation date, newest first
-          .limit(8)
+          .sort({ _id: -1 }) // Sort by creation date, newest first
+          .limit(9)
           .project({
             productId: "$_id",
             productName: 1,
             price: 1,
             brandName: 1,
+            frameSize: 1,
             image: 1,
             status: 1,
             _id: 0,
@@ -1174,10 +1246,10 @@ async function run() {
       }
     });
 
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
