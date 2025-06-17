@@ -24,7 +24,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
     // Send a ping to confirm a successful connection
 
     // DB Collection
@@ -62,6 +62,18 @@ async function run() {
       });
     };
 
+    //verify admin
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const isAdmin = user?.role === "Admin";
+      if (!isAdmin) {
+        return res.status(403).send({ message: "forbidden-access" });
+      }
+      next();
+    };
+
     // user collection
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -73,7 +85,7 @@ async function run() {
       const result = await userCollection.insertOne(user);
       res.send(result);
     });
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       const search = req.query.search;
       const query = {};
       if (search) {
@@ -82,20 +94,25 @@ async function run() {
       const result = await userCollection.find(query).toArray();
       res.send(result);
     });
-    app.patch("/users/:id/:role", async (req, res) => {
-      const id = req.params.id;
-      const role = req.params.role;
-      // console.log(role, id);
-      const query = { _id: new ObjectId(id) };
-      const updatedDoc = {
-        $set: {
-          role: role,
-        },
-      };
-      const result = await userCollection.updateOne(query, updatedDoc);
-      res.send(result);
-    });
-    app.put("/users/profile/:id", async (req, res) => {
+    app.patch(
+      "/users/:id/:role",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const role = req.params.role;
+        // console.log(role, id);
+        const query = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            role: role,
+          },
+        };
+        const result = await userCollection.updateOne(query, updatedDoc);
+        res.send(result);
+      }
+    );
+    app.put("/users/profile/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const userInfo = req.body;
       if (!id || !ObjectId.isValid(id)) {
@@ -138,7 +155,7 @@ async function run() {
     // category
 
     // post category
-    app.post("/categories", async (req, res) => {
+    app.post("/categories", verifyToken, verifyAdmin, async (req, res) => {
       const category = req.body;
       const result = await categoryCollection.insertOne(category);
       res.send(result);
@@ -157,33 +174,43 @@ async function run() {
       res.send(result);
     });
     // update category
-    app.patch("/category/update/:id", async (req, res) => {
-      const id = req.params.id;
-      const data = req.body;
-      const filter = { _id: new ObjectId(id) };
-      const updatedDoc = {
-        $set: {
-          name: data.name,
-          image: data.image,
-          description: data.description,
-        },
-      };
-      const result = await categoryCollection.updateOne(filter, updatedDoc);
-      res.send(result);
-    });
+    app.patch(
+      "/category/update/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const data = req.body;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            name: data.name,
+            image: data.image,
+            description: data.description,
+          },
+        };
+        const result = await categoryCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      }
+    );
 
     // delete category
-    app.delete("/category/delete/:id", async (req, res) => {
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
-      const result = await categoryCollection.deleteOne(filter);
-      res.send(result);
-    });
+    app.delete(
+      "/category/delete/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const result = await categoryCollection.deleteOne(filter);
+        res.send(result);
+      }
+    );
 
     //  'name', 'category', 'gender', 'origin', 'caseMetal', 'caseSize', 'braceletMaterial', 'glassType', 'color', 'wr', 'price', 'status', 'description', 'image'
 
     // product
-    app.post("/products", async (req, res) => {
+    app.post("/products", verifyToken, verifyAdmin, async (req, res) => {
       const product = req.body;
       const result = await productCollection.insertOne(product);
       res.send(result);
@@ -404,83 +431,93 @@ async function run() {
       }
     });
 
-    app.delete("/product/delete/:id", async (req, res) => {
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
-      const result = await productCollection.deleteOne(filter);
-      res.send(result);
-    });
+    app.delete(
+      "/product/delete/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const result = await productCollection.deleteOne(filter);
+        res.send(result);
+      }
+    );
 
     // update product
-    app.patch("/product/update/:id", async (req, res) => {
-      const id = req.params.id;
-      const product = req.body;
+    app.patch(
+      "/product/update/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const product = req.body;
 
-      // Validate ObjectId
-      if (!ObjectId.isValid(id)) {
-        return res.status(400).send({ error: "Invalid product ID" });
-      }
-
-      const filter = { _id: new ObjectId(id) };
-      const updatedDoc = {
-        $set: {
-          productName: product.productName,
-          brandName: product.brandName,
-          productType: product.productType,
-          modelNo: product.modelNo,
-          category: product.category,
-          gender: product.gender,
-          origin: product.origin,
-          manufacturer: product.manufacturer,
-          warranty: product.warranty,
-          color: product.color,
-          price: {
-            amount: product.price.amount,
-            currency: product.price.currency,
-            discount: {
-              percentage: product.price.discount.percentage,
-              discountedAmount: product.price.discount.discountedAmount,
-            },
-          },
-          description: product.description,
-          collection: product.collection,
-          image: product.image, // Array of image URLs
-          status: product.status,
-          frameType: product.frameType,
-          frameShape: product.frameShape,
-          frameMaterial: product.frameMaterial,
-          templeMaterial: product.templeMaterial,
-          frameSize: product.frameSize,
-          frameWidth: product.frameWidth,
-          dimensions: product.dimensions,
-          weight: product.weight,
-          weightGroup: product.weightGroup,
-          frameStyle: product.frameStyle,
-          frameStyleSecondary: product.frameStyleSecondary,
-          prescription: product.prescription,
-          lensMaterial: product.lensMaterial,
-          caseMetal: product.caseMetal,
-          caseSize: product.caseSize,
-          braceletMaterial: product.braceletMaterial,
-          glassType: product.glassType,
-          wr: product.wr,
-        },
-      };
-
-      try {
-        const result = await productCollection.updateOne(filter, updatedDoc);
-        if (result.matchedCount === 0) {
-          return res.status(404).send({ error: "Product not found" });
+        // Validate ObjectId
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ error: "Invalid product ID" });
         }
-        res.send(result);
-      } catch (error) {
-        console.error("Error updating product:", error);
-        res.status(500).send({ error: "Failed to update product" });
+
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            productName: product.productName,
+            brandName: product.brandName,
+            productType: product.productType,
+            modelNo: product.modelNo,
+            category: product.category,
+            gender: product.gender,
+            origin: product.origin,
+            manufacturer: product.manufacturer,
+            warranty: product.warranty,
+            color: product.color,
+            price: {
+              amount: product.price.amount,
+              currency: product.price.currency,
+              discount: {
+                percentage: product.price.discount.percentage,
+                discountedAmount: product.price.discount.discountedAmount,
+              },
+            },
+            description: product.description,
+            collection: product.collection,
+            image: product.image, // Array of image URLs
+            status: product.status,
+            frameType: product.frameType,
+            frameShape: product.frameShape,
+            frameMaterial: product.frameMaterial,
+            templeMaterial: product.templeMaterial,
+            frameSize: product.frameSize,
+            frameWidth: product.frameWidth,
+            dimensions: product.dimensions,
+            weight: product.weight,
+            weightGroup: product.weightGroup,
+            frameStyle: product.frameStyle,
+            frameStyleSecondary: product.frameStyleSecondary,
+            prescription: product.prescription,
+            lensMaterial: product.lensMaterial,
+            caseMetal: product.caseMetal,
+            caseSize: product.caseSize,
+            braceletMaterial: product.braceletMaterial,
+            glassType: product.glassType,
+            wr: product.wr,
+          },
+        };
+
+        try {
+          const result = await productCollection.updateOne(filter, updatedDoc);
+          if (result.matchedCount === 0) {
+            return res.status(404).send({ error: "Product not found" });
+          }
+          res.send(result);
+        } catch (error) {
+          console.error("Error updating product:", error);
+          res.status(500).send({ error: "Failed to update product" });
+        }
       }
-    });
+    );
 
     // Banner Management
-    app.post("/banners", async (req, res) => {
+    app.post("/banners", verifyToken, verifyAdmin, async (req, res) => {
       const banner = req.body;
       const result = await bannerCollection.insertOne(banner);
       res.send(result);
@@ -496,67 +533,82 @@ async function run() {
       }
     });
     // update banner status
-    app.patch("/banner/status/:id", async (req, res) => {
-      const id = req.params.id;
-      const { status } = req.body;
-      const filter = { _id: new ObjectId(id) };
-      const updatedDoc = {
-        $set: {
-          status: status,
-        },
-      };
-      // console.log(status);
-      const result = await bannerCollection.updateOne(filter, updatedDoc);
-      res.send(result);
-    });
+    app.patch(
+      "/banner/status/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const { status } = req.body;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            status: status,
+          },
+        };
+        // console.log(status);
+        const result = await bannerCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      }
+    );
     // delete banner
-    app.delete("/banner/delete/:id", async (req, res) => {
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
-      const result = await bannerCollection.deleteOne(filter);
-      res.send(result);
-    });
+    app.delete(
+      "/banner/delete/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const result = await bannerCollection.deleteOne(filter);
+        res.send(result);
+      }
+    );
 
     // PATCH /banners/:id
-    app.patch("/banners/update/:id", async (req, res) => {
-      const bannerId = req.params.id;
-      const updatedFields = req.body;
+    app.patch(
+      "/banners/update/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const bannerId = req.params.id;
+        const updatedFields = req.body;
 
-      if (!ObjectId.isValid(bannerId)) {
-        return res.status(400).json({ message: "Invalid banner ID" });
-      }
-
-      try {
-        // 1. Get the existing banner
-        const existingBanner = await bannerCollection.findOne({
-          _id: new ObjectId(bannerId),
-        });
-
-        if (!existingBanner) {
-          return res.status(404).json({ message: "Banner not found" });
+        if (!ObjectId.isValid(bannerId)) {
+          return res.status(400).json({ message: "Invalid banner ID" });
         }
 
-        // 2. Merge old and new data
-        const updatedBanner = {
-          ...existingBanner,
-          ...updatedFields,
-          // updatedAt: new Date().toISOString().split("T")[0],
-        };
+        try {
+          // 1. Get the existing banner
+          const existingBanner = await bannerCollection.findOne({
+            _id: new ObjectId(bannerId),
+          });
 
-        // 3. Apply update
-        const result = await bannerCollection.updateOne(
-          { _id: new ObjectId(bannerId) },
-          { $set: updatedBanner }
-        );
+          if (!existingBanner) {
+            return res.status(404).json({ message: "Banner not found" });
+          }
 
-        res
-          .status(200)
-          .json({ message: "Banner updated successfully", updatedBanner });
-      } catch (error) {
-        console.error("Error updating banner:", error);
-        res.status(500).json({ message: "Internal server error" });
+          // 2. Merge old and new data
+          const updatedBanner = {
+            ...existingBanner,
+            ...updatedFields,
+            // updatedAt: new Date().toISOString().split("T")[0],
+          };
+
+          // 3. Apply update
+          const result = await bannerCollection.updateOne(
+            { _id: new ObjectId(bannerId) },
+            { $set: updatedBanner }
+          );
+
+          res
+            .status(200)
+            .json({ message: "Banner updated successfully", updatedBanner });
+        } catch (error) {
+          console.error("Error updating banner:", error);
+          res.status(500).json({ message: "Internal server error" });
+        }
       }
-    });
+    );
 
     // ---------------------------- cart section------------------------------
     // add to cart
@@ -719,56 +771,68 @@ async function run() {
       }
     });
     // change order status
-    app.patch("/orders/change-status/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
-        const { orderStatus } = req.body;
+    app.patch(
+      "/orders/change-status/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        try {
+          const id = req.params.id;
+          const { orderStatus } = req.body;
 
-        // Validate input
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).json({ message: "Invalid order ID" });
+          // Validate input
+          if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid order ID" });
+          }
+          if (!orderStatus) {
+            return res
+              .status(400)
+              .json({ message: "Order status is required" });
+          }
+
+          // Define filter and update operation
+          const filter = { _id: new ObjectId(id) };
+          const updatedOrderStatus = {
+            $set: { orderStatus: orderStatus },
+          };
+
+          const result = await orderCollection.updateOne(
+            filter,
+            updatedOrderStatus
+          );
+
+          if (result.matchedCount === 0) {
+            return res.status(404).json({ message: "Order not found" });
+          }
+          res.send(result);
+        } catch (error) {
+          console.error("Error updating order status:", error);
+          res.status(500).json({
+            message: "Failed to update order status",
+            error: error.message || "Internal server error",
+          });
         }
-        if (!orderStatus) {
-          return res.status(400).json({ message: "Order status is required" });
-        }
-
-        // Define filter and update operation
-        const filter = { _id: new ObjectId(id) };
-        const updatedOrderStatus = {
-          $set: { orderStatus: orderStatus },
-        };
-
-        const result = await orderCollection.updateOne(
-          filter,
-          updatedOrderStatus
-        );
-
-        if (result.matchedCount === 0) {
-          return res.status(404).json({ message: "Order not found" });
-        }
-        res.send(result);
-      } catch (error) {
-        console.error("Error updating order status:", error);
-        res.status(500).json({
-          message: "Failed to update order status",
-          error: error.message || "Internal server error",
-        });
       }
-    });
+    );
 
     // change payment status
-    app.patch("/orders/payment/:id", async (req, res) => {
-      const id = req.params.id;
-      const { paymentStatus } = req.body;
-      const filter = { _id: new ObjectId(id) };
-      const updatedDoc = {
-        $set: {
-          paymentStatus: paymentStatus,
-        },
-      };
-      const result = await orderCollection.updateOne(filter, updatedDoc);
-      res.send(result);
-    });
+    app.patch(
+      "/orders/payment/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const { paymentStatus } = req.body;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            paymentStatus: paymentStatus,
+          },
+        };
+        const result = await orderCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      }
+    );
 
     // generate invoice
 
@@ -849,14 +913,14 @@ async function run() {
     });
 
     // ----------------------------------------Patient related APIS------------------------------
-    app.post("/patients", async (req, res) => {
+    app.post("/patients", verifyToken, verifyAdmin, async (req, res) => {
       const patient = req.body;
 
       const result = await patientCollection.insertOne(patient);
       res.send(result);
     });
     // update patient
-    app.patch("/patients/:id", async (req, res) => {
+    app.patch("/patients/:id", verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const updatedPatient = req.body;
 
@@ -885,7 +949,7 @@ async function run() {
       }
     });
 
-    app.get("/patients", async (req, res) => {
+    app.get("/patients", verifyToken, verifyAdmin, async (req, res) => {
       const search = req.query.search;
       const query = {};
       // If search is provided, filter by customer name or phone
@@ -904,16 +968,21 @@ async function run() {
     });
 
     // delete patient
-    app.delete("/patient/delete/:id", async (req, res) => {
-      const id = req.params.id;
-      console.log(id);
-      const filter = { _id: new ObjectId(id) };
-      const result = await patientCollection.deleteOne(filter);
-      res.send(result);
-    });
+    app.delete(
+      "/patient/delete/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        console.log(id);
+        const filter = { _id: new ObjectId(id) };
+        const result = await patientCollection.deleteOne(filter);
+        res.send(result);
+      }
+    );
 
     // ----------------------------------------Stats related APIS------------------------------
-    app.get("/admin-stats", async (req, res) => {
+    app.get("/admin-stats", verifyToken, verifyAdmin, async (req, res) => {
       const totalBanners = await bannerCollection.estimatedDocumentCount();
       const activeBanners = await bannerCollection.countDocuments({
         status: "added",
@@ -959,7 +1028,7 @@ async function run() {
 
     // ----------------------------------------sales-repot APIS------------------------------
 
-    app.get("/sales-report", async (req, res) => {
+    app.get("/sales-report", verifyToken, verifyAdmin, async (req, res) => {
       try {
         // Total orders
         const totalOrders = await orderCollection.estimatedDocumentCount();
@@ -1143,25 +1212,30 @@ async function run() {
 
     // discount voucher
     // update shopping discount
-    app.patch("/user/update-discount/:email", async (req, res) => {
-      const email = req.params.email;
-      // console.log(email);
-      const { discount } = req.body;
-      const filter = { email: email };
-      // console.log(discount, email)
+    app.patch(
+      "/user/update-discount/:email",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const email = req.params.email;
+        // console.log(email);
+        const { discount } = req.body;
+        const filter = { email: email };
+        // console.log(discount, email)
 
-      const updatedDoc = {
-        $set: {
-          discountVoucher: parseInt(discount),
-        },
-      };
-      try {
-        const result = await userCollection.updateOne(filter, updatedDoc);
-        res.send(result);
-      } catch (error) {
-        res.status(500).send({ error: "Failed to update discount" });
+        const updatedDoc = {
+          $set: {
+            discountVoucher: parseInt(discount),
+          },
+        };
+        try {
+          const result = await userCollection.updateOne(filter, updatedDoc);
+          res.send(result);
+        } catch (error) {
+          res.status(500).send({ error: "Failed to update discount" });
+        }
       }
-    });
+    );
 
     app.get("/users/discount/:email", async (req, res) => {
       const email = req.params.email;
