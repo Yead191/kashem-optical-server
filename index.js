@@ -390,10 +390,18 @@ async function run() {
       }
     });
     app.get("/product/:id", async (req, res) => {
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
-      const result = await productCollection.findOne(filter);
-      res.send(result);
+      try {
+        const id = req.params.id;
+        if (!id) {
+          return res.status(400).send({ error: "Product ID is required" });
+        }
+        const filter = { _id: new ObjectId(id) };
+        const result = await productCollection.findOne(filter);
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching product:", error);
+        res.status(500).send({ error: "Failed to fetch product" });
+      }
     });
 
     app.delete("/product/delete/:id", async (req, res) => {
@@ -478,10 +486,16 @@ async function run() {
       res.send(result);
     });
     app.get("/banners", async (req, res) => {
-      // const result = await bannerCollection.aggregate([{ $sample: { size: await bannerCollection.countDocuments() } }]).toArray();
-      const result = await bannerCollection.find().toArray();
-      res.send(result);
+      try {
+        // const result = await bannerCollection.aggregate([{ $sample: { size: await bannerCollection.countDocuments() } }]).toArray();
+        const result = await bannerCollection.find().toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching banners:", error);
+        res.status(500).send({ message: "Failed to fetch banners" });
+      }
     });
+    // update banner status
     app.patch("/banner/status/:id", async (req, res) => {
       const id = req.params.id;
       const { status } = req.body;
@@ -495,11 +509,53 @@ async function run() {
       const result = await bannerCollection.updateOne(filter, updatedDoc);
       res.send(result);
     });
+    // delete banner
     app.delete("/banner/delete/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const result = await bannerCollection.deleteOne(filter);
       res.send(result);
+    });
+
+    // PATCH /banners/:id
+    app.patch("/banners/update/:id", async (req, res) => {
+      const bannerId = req.params.id;
+      const updatedFields = req.body;
+
+      if (!ObjectId.isValid(bannerId)) {
+        return res.status(400).json({ message: "Invalid banner ID" });
+      }
+
+      try {
+        // 1. Get the existing banner
+        const existingBanner = await bannerCollection.findOne({
+          _id: new ObjectId(bannerId),
+        });
+
+        if (!existingBanner) {
+          return res.status(404).json({ message: "Banner not found" });
+        }
+
+        // 2. Merge old and new data
+        const updatedBanner = {
+          ...existingBanner,
+          ...updatedFields,
+          // updatedAt: new Date().toISOString().split("T")[0],
+        };
+
+        // 3. Apply update
+        const result = await bannerCollection.updateOne(
+          { _id: new ObjectId(bannerId) },
+          { $set: updatedBanner }
+        );
+
+        res
+          .status(200)
+          .json({ message: "Banner updated successfully", updatedBanner });
+      } catch (error) {
+        console.error("Error updating banner:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
     });
 
     // ---------------------------- cart section------------------------------
