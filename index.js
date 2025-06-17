@@ -417,6 +417,86 @@ async function run() {
       }
     });
     app.get("/product/:id", async (req, res) => {
+<<<<<<< HEAD
+=======
+      try {
+        const id = req.params.id;
+        if (!id) {
+          return res.status(400).send({ error: "Product ID is required" });
+        }
+        const filter = { _id: new ObjectId(id) };
+        const result = await productCollection.findOne(filter);
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching product:", error);
+        res.status(500).send({ error: "Failed to fetch product" });
+      }
+    });
+
+    app.delete("/product/delete/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const result = await productCollection.deleteOne(filter);
+      res.send(result);
+    });
+
+    // update product
+    app.patch("/product/update/:id", async (req, res) => {
+      const id = req.params.id;
+      const product = req.body;
+
+      // Validate ObjectId
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).send({ error: "Invalid product ID" });
+      }
+
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          productName: product.productName,
+          brandName: product.brandName,
+          productType: product.productType,
+          modelNo: product.modelNo,
+          category: product.category,
+          gender: product.gender,
+          origin: product.origin,
+          manufacturer: product.manufacturer,
+          warranty: product.warranty,
+          color: product.color,
+          price: {
+            amount: product.price.amount,
+            currency: product.price.currency,
+            discount: {
+              percentage: product.price.discount.percentage,
+              discountedAmount: product.price.discount.discountedAmount,
+            },
+          },
+          description: product.description,
+          collection: product.collection,
+          image: product.image, // Array of image URLs
+          status: product.status,
+          frameType: product.frameType,
+          frameShape: product.frameShape,
+          frameMaterial: product.frameMaterial,
+          templeMaterial: product.templeMaterial,
+          frameSize: product.frameSize,
+          frameWidth: product.frameWidth,
+          dimensions: product.dimensions,
+          weight: product.weight,
+          weightGroup: product.weightGroup,
+          frameStyle: product.frameStyle,
+          frameStyleSecondary: product.frameStyleSecondary,
+          prescription: product.prescription,
+          lensMaterial: product.lensMaterial,
+          caseMetal: product.caseMetal,
+          caseSize: product.caseSize,
+          braceletMaterial: product.braceletMaterial,
+          glassType: product.glassType,
+          wr: product.wr,
+        },
+      };
+
+>>>>>>> 6b33200c5d2a78ea5b0546c6dda286feeb9aabcf
       try {
         const id = req.params.id;
         if (!id) {
@@ -609,6 +689,47 @@ async function run() {
         }
       }
     );
+
+    // PATCH /banners/:id
+    app.patch("/banners/update/:id", async (req, res) => {
+      const bannerId = req.params.id;
+      const updatedFields = req.body;
+
+      if (!ObjectId.isValid(bannerId)) {
+        return res.status(400).json({ message: "Invalid banner ID" });
+      }
+
+      try {
+        // 1. Get the existing banner
+        const existingBanner = await bannerCollection.findOne({
+          _id: new ObjectId(bannerId),
+        });
+
+        if (!existingBanner) {
+          return res.status(404).json({ message: "Banner not found" });
+        }
+
+        // 2. Merge old and new data
+        const updatedBanner = {
+          ...existingBanner,
+          ...updatedFields,
+          // updatedAt: new Date().toISOString().split("T")[0],
+        };
+
+        // 3. Apply update
+        const result = await bannerCollection.updateOne(
+          { _id: new ObjectId(bannerId) },
+          { $set: updatedBanner }
+        );
+
+        res
+          .status(200)
+          .json({ message: "Banner updated successfully", updatedBanner });
+      } catch (error) {
+        console.error("Error updating banner:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    });
 
     // ---------------------------- cart section------------------------------
     // add to cart
